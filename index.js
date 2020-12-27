@@ -109,7 +109,7 @@ class Broadlink extends EventEmitter {
 
     const splitIPAddress = ipAddress.split('.');
     const port = socket.address().port;
-    if (debug && log) log(`\x1b[35m[INFO]\x1b[0m Listening for Broadlink devices on ${ipAddress}:${port} (UDP)`);
+    if (debug && log) console.log(`\x1b[35m[INFO]\x1b[0m Listening for Broadlink devices on ${ipAddress}:${port} (UDP)`);
 
     const now = new Date();
     const starttime = now.getTime();
@@ -211,7 +211,7 @@ class Broadlink extends EventEmitter {
     const isKnownDevice = (rmDeviceTypes[parseInt(deviceType, 16)] || rmPlusDeviceTypes[parseInt(deviceType, 16)])
 
     if (!isKnownDevice) {
-      log(`\n\x1b[35m[Info]\x1b[0m We've discovered an unknown Broadlink device. This likely won't cause any issues.\n\nPlease raise an issue in the GitHub repository (https://github.com/lprhodes/homebridge-broadlink-rm/issues) with details of the type of device and its device type code: "${deviceType.toString(16)}". The device is connected to your network with the IP address "${host.address}".\n`);
+      console.log(`\n\x1b[35m[Info]\x1b[0m We've discovered an unknown Broadlink device. This likely won't cause any issues.\n\nPlease raise an issue in the GitHub repository (https://github.com/lprhodes/homebridge-broadlink-rm/issues) with details of the type of device and its device type code: "${deviceType.toString(16)}". The device is connected to your network with the IP address "${host.address}".\n`);
       
       return null;
     }
@@ -268,7 +268,10 @@ class Device {
       response.copy(encryptedPayload, 0, 0x38);
       
       const err = response[0x22] | (response[0x23] << 8);
-      if (err != 0) return;
+      if (err != 0) {
+        console.log("ERROR : setupSocket "+err);
+        return;
+      }
 
       const decipher = crypto.createDecipheriv('aes-128-cbc', this.key, this.iv);
       decipher.setAutoPadding(false);
@@ -301,6 +304,7 @@ class Device {
   }
 
   authenticate() {
+    console.log("[Authentication] function ");
     const payload = Buffer.alloc(0x50, 0);
 
     payload[0x04] = 0x31;
@@ -328,10 +332,13 @@ class Device {
     payload[0x35] = ' '.charCodeAt(0);
     payload[0x36] = '1'.charCodeAt(0);
 
-    this.sendPacket(0x65, payload);
+    console.log("[Authentication] : packet to send ... ");
+    console.log(payload)
+    this.sendPacket(0x65, payload, true);
   }
 
   sendPacket (command, payload, debug = false) {
+    console.log("[sendPacket] function ");
     const { log, socket } = this;
     this.count = (this.count + 1) & 0xffff;
 
@@ -345,8 +352,8 @@ class Device {
     packet[0x05] = 0xa5;
     packet[0x06] = 0xaa;
     packet[0x07] = 0x55;
-    packet[0x24] = 0x2a;
-    packet[0x25] = 0x27;
+    packet[0x24] = this.type & 0xff;
+    packet[0x25] = this.type >> 8;
     packet[0x26] = command;
     packet[0x28] = this.count & 0xff;
     packet[0x29] = this.count >> 8;
@@ -383,15 +390,16 @@ class Device {
     packet[0x20] = checksum & 0xff;
     packet[0x21] = checksum >> 8;
 
-    if (debug) log('\x1b[33m[DEBUG]\x1b[0m packet', packet.toString('hex'))
+    if (debug) console.log('\x1b[33m[DEBUG]\x1b[0m packet', packet.toString('hex'))
 
     socket.send(packet, 0, packet.length, this.host.port, this.host.address, (err, bytes) => {
-      if (debug && err) log('\x1b[33m[DEBUG]\x1b[0m send packet error', err)
-      if (debug) log('\x1b[33m[DEBUG]\x1b[0m successfuly sent packet - bytes: ', bytes)
+      if (debug && err) console.log('\x1b[33m[DEBUG]\x1b[0m send packet error', err)
+      if (debug) console.log('\x1b[33m[DEBUG]\x1b[0m successfuly sent packet - bytes: ', bytes)
     });
   }
 
   onPayloadReceived (err, payload) {
+    console.log("[onPayloadReceived] function");
     const param = payload[0];
 
     const data = Buffer.alloc(payload.length - 4, 0);
@@ -435,7 +443,7 @@ class Device {
   }
 
   sendData (data, debug = false) {
-    let packet = new Buffer([0x02, 0x00, 0x00, 0x00]);
+    let packet = new Buffer([0xD0, 0x00, 0x02, 0x00, 0x00, 0x00]);
     packet = Buffer.concat([packet, data]);
     this.sendPacket(0x6a, packet, debug);
   }
